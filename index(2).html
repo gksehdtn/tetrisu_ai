@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>테트리스</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#111;color:#fff;font-family:sans-serif;overflow:hidden}
+#container{width:100vw;height:calc(100vh - 50px);display:flex;justify-content:center;align-items:center;gap:15px;padding-bottom:50px}
+#side{display:flex;flex-direction:column;gap:15px}
+canvas{background:#000;border:2px solid #fff}
+</style>
+</head>
+<body>
+<div id="container">
+<canvas id="game"></canvas>
+<div id="side">
+<div>점수: <span id="score">0</span><br>레벨: <span id="level">1</span></div>
+<div>다음 블록<br><canvas id="next" width="120" height="120"></canvas></div>
+<div>W 회전<br>A 왼쪽<br>D 오른쪽<br>SPACE 아래</div>
+</div>
+</div>
+<script>
+const COLS=10,ROWS=20;
+const game=document.getElementById("game"),ctx=game.getContext("2d");
+const nextCanvas=document.getElementById("next"),nextCtx=nextCanvas.getContext("2d");
+const scoreEl=document.getElementById("score"),levelEl=document.getElementById("level");
+let BLOCK,lastTime=0,counter=0;
+function resizeGame(){
+BLOCK=Math.floor(Math.min(((innerHeight-50)*0.9)/ROWS,(innerWidth*0.6)/COLS));
+game.width=BLOCK*COLS;game.height=BLOCK*ROWS;
+}
+addEventListener("resize",resizeGame);resizeGame();
+
+const colors=[null,"#0ff","#00f","#f80","#ff0","#0f0","#a0f","#f00"];
+const pieces=[[],[[1,1,1,1]],[[2,0,0],[2,2,2]],[[0,0,3],[3,3,3]],[[4,4],[4,4]],[[0,5,5],[5,5,0]],[[0,6,0],[6,6,6]],[[7,7,0],[0,7,7]]];
+
+let board=Array.from({length:ROWS},()=>Array(COLS).fill(0));
+let score=0,level=1,lines=0,bag=[];
+
+function refillBag(){
+ bag=[1,2,3,4,5,6,7];
+ for(let i=bag.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[bag[i],bag[j]]=[bag[j],bag[i]];}
+}
+function createPiece(){
+ if(!bag.length) refillBag();
+ const type=bag.pop();
+ return {shape:pieces[type],color:type,x:0,y:0};
+}
+refillBag();
+let player=createPiece(),nextPiece=createPiece();
+
+function drawNext(){
+ nextCtx.clearRect(0,0,120,120);
+ nextPiece.shape.forEach((r,y)=>r.forEach((v,x)=>{
+  if(v){nextCtx.fillStyle=colors[nextPiece.color];nextCtx.fillRect(x*30+15,y*30+15,30,30);}
+ }));
+}
+function collide(px=player.x,py=player.y,s=player.shape){
+ for(let y=0;y<s.length;y++)for(let x=0;x<s[y].length;x++)if(s[y][x]&&(
+  board[y+py]===undefined||board[y+py][x+px]===undefined||board[y+py][x+px])) return true;
+ return false;
+}
+function spawnPiece(){
+ player=nextPiece;
+ player.x=Math.floor(COLS/2)-Math.floor(player.shape[0].length/2);
+ player.y=0;
+ nextPiece=createPiece();
+ drawNext();
+ if(collide()) gameOver();
+}
+function drawBlock(x,y,c,a=1){
+ ctx.globalAlpha=a;ctx.fillStyle=colors[c];
+ ctx.fillRect(x*BLOCK,y*BLOCK,BLOCK,BLOCK);
+ ctx.strokeStyle="#222";ctx.strokeRect(x*BLOCK,y*BLOCK,BLOCK,BLOCK);
+ ctx.globalAlpha=1;
+}
+function merge(){
+ player.shape.forEach((r,y)=>r.forEach((v,x)=>{if(v) board[player.y+y][player.x+x]=player.color;}));
+}
+function clearLines(){
+ let cleared=0;
+ outer:for(let y=ROWS-1;y>=0;y--){
+  for(let x=0;x<COLS;x++) if(board[y][x]===0) continue outer;
+  board.splice(y,1);board.unshift(Array(COLS).fill(0));cleared++;y++;
+ }
+ if(cleared){
+  lines+=cleared;score+=cleared*100*level;level=Math.floor(lines/10)+1;
+  scoreEl.textContent=score;levelEl.textContent=level;
+ }
+}
+function rotate(m){return m[0].map((_,i)=>m.map(r=>r[i]).reverse());}
+function drawGhost(){
+ let gy=player.y;
+ while(!collide(player.x,gy+1,player.shape)) gy++;
+ player.shape.forEach((r,y)=>r.forEach((v,x)=>{if(v) drawBlock(player.x+x,gy+y,player.color,.25);}));
+}
+function draw(){
+ ctx.clearRect(0,0,game.width,game.height);
+ board.forEach((r,y)=>r.forEach((v,x)=>{if(v) drawBlock(x,y,v);}));
+ drawGhost();
+ player.shape.forEach((r,y)=>r.forEach((v,x)=>{if(v) drawBlock(player.x+x,player.y+y,player.color);}));
+}
+function drop(){
+ player.y++;
+ if(collide()){player.y--;merge();clearLines();spawnPiece();}
+}
+function gameOver(){
+ alert("게임 오버!\n점수: "+score);
+ board=Array.from({length:ROWS},()=>Array(COLS).fill(0));
+ score=0;level=1;lines=0;
+ scoreEl.textContent=0;levelEl.textContent=1;
+ player=createPiece();nextPiece=createPiece();
+ counter=0;lastTime=performance.now();
+ spawnPiece();
+}
+document.addEventListener("keydown",e=>{
+ const k=e.key.toLowerCase();
+ if(["a","d","w"].includes(k)||e.code==="Space") e.preventDefault();
+ if(k==="a"){player.x--;if(collide())player.x++;}
+ if(k==="d"){player.x++;if(collide())player.x--;}
+ if(k==="w"){const old=player.shape;player.shape=rotate(player.shape);if(collide())player.shape=old;}
+ if(e.code==="Space") drop();
+});
+function update(t=0){
+ const delta=t-lastTime;lastTime=t;counter+=delta;
+ const speed=Math.max(60,350-(level-1)*25);
+ if(counter>speed){drop();counter=0;}
+ draw();requestAnimationFrame(update);
+}
+spawnPiece();update();
+</script>
+</body>
+</html>
